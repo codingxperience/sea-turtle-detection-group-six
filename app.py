@@ -1,125 +1,43 @@
-import os
 import streamlit as st
-from fastai.learner import load_learner
 from PIL import Image
-import pathlib
-import torch
-import matplotlib.pyplot as plt
-import numpy as np
-import pathlib   
-temp = pathlib.PosixPath   
-pathlib.PosixPath = pathlib.WindowsPath
+import subprocess
+import os
 
-# Define the folder path and filename
-folder_path = 'models'
-fname = 'sea_turtle_model.pkl'
+import utils
 
-# Define the model path
-model_path = os.path.join(folder_path, fname)
+def detect_objects(image_path, model_path, output_dir):
+    subprocess.run(['yolo', 'task=detect', 'mode=predict', f'model={model_path}', 'conf=0.25', f'source={image_path}'])
 
-# Define a function to load the trained model
-def load_model(model_path):
-    learn = load_learner(model_path, cpu=True)
-    return learn
-
-# Define the IOU function
-def iou(boxA, boxB):
-    # Extract coordinates from boxA
-    xA1, yA1, wA, hA = boxA[:, 0], boxA[:, 1], boxA[:, 2], boxA[:, 3]
-    xA2, yA2 = xA1 + wA, yA1 + hA
-    
-    # Extract coordinates from boxB
-    xB1, yB1, wB, hB = boxB[:, 0], boxB[:, 1], boxB[:, 2], boxB[:, 3]
-    xB2, yB2 = xB1 + wB, yB1 + hB
-    
-    # Determine the intersection rectangle
-    xA = torch.max(xA1, xB1)
-    yA = torch.max(yA1, yB1)
-    xB = torch.min(xA2, xB2)
-    yB = torch.min(yA2, yB2)
-
-    # Calculate the intersection area
-    interArea = torch.clamp(xB - xA + 1, min=0) * torch.clamp(yB - yA + 1, min=0)
-
-    # Calculate the areas of both bounding boxes
-    boxAArea = (wA + 1) * (hA + 1)
-    boxBArea = (wB + 1) * (hB + 1)
-
-    # Calculate the IOU
-    iou = interArea / (boxAArea + boxBArea - interArea)
-
-    return iou.mean()  # Average IOU over all items in batch
-
-# Define a function to make predictions and extract bounding box values
-def predict(image):
-    result = learn.predict(image)
-    if isinstance(result, tuple):
-        prediction, bbox, *_ = result
-    else:
-        prediction, bbox = result, None
-    return prediction, bbox
-
-# Modify the main function to display bounding boxes
 def main():
-    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png"])
+    st.title('Turtle Face Detection App')
+
+    # Check and create necessary folders
+    utils.check_folders()
+
+    # Sidebar for uploading files
+    uploaded_file = st.sidebar.file_uploader("Load File", type=['png', 'jpeg', 'jpg'])
 
     if uploaded_file is not None:
-        # Display the uploaded image
-        image = Image.open(uploaded_file)
-        st.image(image, caption='Uploaded Image', use_column_width=True)
+        is_valid = True
+        with st.spinner(text='Loading...'):
+            st.sidebar.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+            picture = Image.open(uploaded_file)
+            picture.save(f'uploads/images/{uploaded_file.name}')
+            source = f'uploads/images/{uploaded_file.name}'
+    else:
+        is_valid = False
 
-        # Make prediction on the uploaded image
-        prediction, bbox = predict(image)
-        
-        # Display the prediction
-        st.write("Prediction:", prediction)
-        
-        # Draw bounding boxes on the image
-        draw_bbox(image, bbox)
+    if is_valid:
+        if st.button('Detect Head'):
+            with st.spinner('Detecting Head...'):
+                detect_objects(source, 'models/best.pt', 'runs/detect')
 
-# Function to draw bounding boxes on the image
-def draw_bbox(image, bbox):
-    plt.figure(figsize=(8, 8))
-    plt.imshow(np.array(image))
-    ax = plt.gca()
-    
-    # Convert bounding box tensor to numpy array
-    if bbox is not None:
-        bbox = bbox.detach().cpu().numpy()
+                detected_image_path = os.path.join(utils.get_detection_folder(), os.path.basename(source))
 
-        # Check if bbox is a single box or multiple boxes
-        if len(bbox.shape) == 1:  # Single box
-            x, y, w, h = bbox[0], bbox[1], bbox[2], bbox[3]
-            # Scale the coordinates to the image dimensions
-            width, height = image.size
-            x *= width
-            y *= height
-            w *= width
-            h *= height
-            print("Single box coordinates:", x, y, w, h)  # Debug statement
-            rect = plt.Rectangle((x, y), w, h, fill=False, color='red', linewidth=2)
-            ax.add_patch(rect)
-            ax.text(x, y - 5, 'Turtle', color='red')
-        else:  # Multiple boxes
-            for box in bbox:
-                x, y, w, h = box[0], box[1], box[2], box[3]
-                # Scale the coordinates to the image dimensions
-                width, height = image.size
-                x *= width
-                y *= height
-                w *= width
-                h *= height
-                print("Multiple box coordinates:", x, y, w, h)  # Debug statement
-                rect = plt.Rectangle((x, y), w, h, fill=False, color='red', linewidth=2)
-                ax.add_patch(rect)
-                ax.text(x, y - 5, 'Turtle', color='red')
-            
-    plt.axis('off')
-    st.pyplot(plt)
+                if os.path.exists(detected_image_path):
+                    st.image(detected_image_path, caption="Its a turtle", use_column_width=True)
+                else:
+                    st.error("No object detected.")
 
-
-
-
-if __name__ == "__main__":
-    learn = load_model(model_path)
+if __name__ == '__main__':
     main()

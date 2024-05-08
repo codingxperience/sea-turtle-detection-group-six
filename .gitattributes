@@ -4,3 +4,4 @@
 *.pkl filter=lfs diff=lfs merge=lfs -text
 data/IMAGES_512.zip filter=lfs diff=lfs merge=lfs -text
 data/IMAGES_1024.zip filter=lfs diff=lfs merge=lfs -text
+*.pt filter=lfs diff=lfs merge=lfs -text
